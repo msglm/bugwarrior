@@ -5,20 +5,20 @@ import os
 import pickle
 import re
 import time
+import typing
 
 import googleapiclient.discovery
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 
 log = logging.getLogger(__name__)
 
 
 class GmailConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['gmail']
+    service: typing.Literal['gmail']
 
     client_secret_path: config.ExpandedPath = config.ExpandedPath(
         '~/.gmail_client_secret.json')
@@ -99,7 +99,7 @@ class GmailIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.extra['subject'],
-            url=self.get_processed_url(self.extra['url']),
+            url=self.extra['url'],
             number=self.record['id'],
             cls='issue',
         )
@@ -113,7 +113,7 @@ class GmailIssue(Issue):
         return self.parse_date(date_string)
 
 
-class GmailService(IssueService):
+class GmailService(Service):
     APPLICATION_NAME = 'Bugwarrior Gmail Service'
     SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
@@ -201,12 +201,8 @@ class GmailService(IssueService):
     def annotations(self, issue):
         sender = issue.extra['last_sender_name']
         subj = issue.extra['subject']
-        issue_url = issue.get_processed_url(issue.extra['url'])
+        issue_url = issue.extra['url']
         return self.build_annotations([(sender, subj)], issue_url)
-
-    def get_owner(self, issue):
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def issues(self):
         labels = self.get_labels()
@@ -215,7 +211,7 @@ class GmailService(IssueService):
             extra = {
                 'annotations': self.annotations(issue),
             }
-            issue.update_extra(extra)
+            issue.extra.update(extra)
             yield issue
 
 

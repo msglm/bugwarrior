@@ -5,15 +5,16 @@ Pulls trello cards as tasks.
 
 Trello API documentation available at https://developers.trello.com/
 """
-import requests
-import typing_extensions
+import typing
 
-from bugwarrior.services import IssueService, Issue, ServiceClient
+import requests
+
+from bugwarrior.services import Service, Issue, Client
 from bugwarrior import config
 
 
 class TrelloConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['trello']
+    service: typing.Literal['trello']
     api_key: str
     token: str
 
@@ -81,13 +82,9 @@ class TrelloIssue(Issue):
         }
 
 
-class TrelloService(IssueService, ServiceClient):
+class TrelloService(Service, Client):
     ISSUE_CLASS = TrelloIssue
     CONFIG_SCHEMA = TrelloConfig
-
-    def get_owner(self, issue):
-        # Issue filtering is implemented as part of the api query.
-        pass
 
     @staticmethod
     def get_keyring_service(config):
@@ -102,7 +99,7 @@ class TrelloService(IssueService, ServiceClient):
                 listextra = dict(boardname=board['name'], listname=lst['name'])
                 for card in self.get_cards(lst['id']):
                     issue = self.get_issue_for_record(card, extra=listextra)
-                    issue.update_extra({"annotations": self.annotations(card)})
+                    issue.extra.update({"annotations": self.annotations(card)})
                     yield issue
 
     def annotations(self, card_json):

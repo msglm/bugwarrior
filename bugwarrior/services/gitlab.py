@@ -2,24 +2,23 @@ from urllib.parse import quote, urlencode
 import requests
 import typing
 
-import pydantic
+import pydantic.v1
 import sys
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 import logging
 log = logging.getLogger(__name__)
 
-DefaultPriority = typing_extensions.Literal['', 'L', 'M', 'H', 'unassigned']
+DefaultPriority = typing.Literal['', 'L', 'M', 'H', 'unassigned']
 
 
 class GitlabConfig(config.ServiceConfig):
     _DEPRECATE_FILTER_MERGE_REQUESTS = True
-    filter_merge_requests: typing.Union[bool, typing_extensions.Literal['Undefined']] = 'Undefined'
+    filter_merge_requests: typing.Union[bool, typing.Literal['Undefined']] = 'Undefined'
 
-    service: typing_extensions.Literal['gitlab']
+    service: typing.Literal['gitlab']
     login: str
     token: str
     host: config.NoSchemeUrl
@@ -32,7 +31,7 @@ class GitlabConfig(config.ServiceConfig):
     owned: typing.Optional[bool] = None
     import_labels_as_tags: bool = False
     label_template: str = '{{label}}'
-    include_merge_requests: typing.Union[bool, typing_extensions.Literal['Undefined']] = 'Undefined'
+    include_merge_requests: typing.Union[bool, typing.Literal['Undefined']] = 'Undefined'
     include_issues: bool = True
     include_todos: bool = False
     include_all_todos: bool = True
@@ -48,7 +47,7 @@ class GitlabConfig(config.ServiceConfig):
     merge_request_query: str = ''
     todo_query: str = ''
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def namespace_repo_lists(cls, values):
         """ Add a default namespace to a repository name.  If the name already
         contains a namespace, it will be returned unchanged:
@@ -64,7 +63,7 @@ class GitlabConfig(config.ServiceConfig):
                 for repo in values[repolist]]
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def default_priorities(cls, values):
         for task_type in ['issue', 'todo', 'mr']:
             priority_field = f'default_{task_type}_priority'
@@ -74,7 +73,7 @@ class GitlabConfig(config.ServiceConfig):
                 else values['default_priority'])
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def filter_gitlab_dot_com(cls, values):
         """
         There must be a repository filter if the host is gitlab.com.
@@ -99,7 +98,7 @@ class GitlabConfig(config.ServiceConfig):
                 "there are too many on gitlab.com to fetch them all.")
         return values
 
-    @pydantic.validator('owned', always=True)
+    @pydantic.v1.validator('owned', always=True)
     def require_owned(cls, v):
         """
         Migrate 'owned' field from default False to default True.
@@ -117,7 +116,7 @@ class GitlabConfig(config.ServiceConfig):
         return v
 
 
-class GitlabClient(ServiceClient):
+class GitlabClient(Client):
     """Abstraction of Gitlab API v4"""
 
     def __init__(self, host, token, only_if_assigned, also_unassigned, use_https, verify_ssl):
@@ -519,13 +518,13 @@ class GitlabIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.title,
-            url=self.get_processed_url(self.extra['issue_url']),
+            url=self.extra['issue_url'],
             number=self.record.get('iid', ''),
             cls=self.extra['type'],
         )
 
 
-class GitlabService(IssueService):
+class GitlabService(Service):
     ISSUE_CLASS = GitlabIssue
     CONFIG_SCHEMA = GitlabConfig
 
@@ -581,7 +580,7 @@ class GitlabService(IssueService):
 
         return is_included
 
-    def annotations(self, repo, url, issue_type, issue, issue_obj):
+    def annotations(self, repo, url, issue_type, issue):
         annotations = []
 
         if self.main_config.annotation_comments:
@@ -591,10 +590,7 @@ class GitlabService(IssueService):
                 n['body']
             ) for n in notes)
 
-        return self.build_annotations(
-            annotations,
-            issue_obj.get_processed_url(url)
-        )
+        return self.build_annotations(annotations, url)
 
     def include_todo(self, repos):
         ids = list(r['id'] for r in repos)
@@ -620,10 +616,10 @@ class GitlabService(IssueService):
                 'project': repo['path'],
                 'namespace': repo['namespace']['full_path'],
                 'type': issue_type,
-                'annotations': self.annotations(repo, issue_url, type_plural, issue, issue_obj),
+                'annotations': self.annotations(repo, issue_url, type_plural, issue),
                 'description': self.description(issue),
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj
 
     def _get_todo_objs(self, todos):
@@ -648,7 +644,7 @@ class GitlabService(IssueService):
                 'type': 'todo',
                 'annotations': [],
             }
-            todo_obj.update_extra(extra)
+            todo_obj.extra.update(extra)
             yield todo_obj
 
     def include(self, issue):

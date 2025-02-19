@@ -1,16 +1,16 @@
+import dataclasses
 import logging
 import sys
 import typing
 from functools import reduce
 
-import pydantic
-import typing_extensions
+import pydantic.v1
 from dateutil.tz.tz import tzutc
 from jira.client import JIRA as BaseJIRA
 from requests.cookies import RequestsCookieJar
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService
+from bugwarrior.services import Issue, Service
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +55,7 @@ class JiraExtraFields(frozenset):
         return extra_fields
 
 
-# NOTE: replace with stdlib dataclasses.dataclass once python-3.6 is dropped
-@pydantic.dataclasses.dataclass
+@dataclasses.dataclass
 class JiraExtraField:
     label: str
     keys: typing.List[str]
@@ -77,8 +76,8 @@ class JiraExtraField:
 
 
 class JiraConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['jira']
-    base_uri: pydantic.AnyUrl
+    service: typing.Literal['jira']
+    base_uri: pydantic.v1.AnyUrl
     username: str
 
     password: str = ''
@@ -94,7 +93,7 @@ class JiraConfig(config.ServiceConfig):
     verify_ssl: bool = True
     version: int = 5
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def require_password_xor_PAT(cls, values):
         if ((values['password'] and values['PAT'])
                 or not (values['password'] or values['PAT'])):
@@ -246,11 +245,11 @@ class JiraIssue(Issue):
         return {**fixed_fields, **extra_fields}
 
     def get_extra_fields(self):
-        if self.extra['extra_fields'] is None:
+        if self.config.extra_fields is None:
             return {}
 
         return {extra_field.label: extra_field.extract_value(
-            self.record['fields']) for extra_field in self.extra['extra_fields']}
+            self.record['fields']) for extra_field in self.config.extra_fields}
 
     def get_entry(self):
         created_at = self.record['fields']['created']
@@ -308,12 +307,12 @@ class JiraIssue(Issue):
         return self.config.base_uri + '/browse/' + self.record['key']
 
     def get_summary(self):
-        if self.extra.get('jira_version') == 4:
+        if self.config.version == 4:
             return self.record['fields']['summary']['value']
         return self.record['fields']['summary']
 
     def get_estimate(self):
-        if self.extra.get('jira_version') == 4:
+        if self.config.version == 4:
             return self.record['fields']['timeestimate']['value']
         try:
             return self.record['fields']['timeestimate'] / 60 / 60
@@ -333,7 +332,7 @@ class JiraIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.get_summary(),
-            url=self.get_processed_url(self.get_url()),
+            url=self.get_url(),
             number=self.get_number(),
             cls='issue',
         )
@@ -362,7 +361,7 @@ class JiraIssue(Issue):
         return self.record['fields']['issuetype']['name']
 
 
-class JiraService(IssueService):
+class JiraService(Service):
     ISSUE_CLASS = JiraIssue
     CONFIG_SCHEMA = JiraConfig
 
@@ -413,11 +412,6 @@ class JiraService(IssueService):
     def get_keyring_service(config):
         return f"jira://{config.username}@{config.base_uri}"
 
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
-
     def body(self, issue):
         body = issue.record.get('fields', {}).get('description')
 
@@ -433,28 +427,22 @@ class JiraService(IssueService):
                 comment.author.displayName,
                 comment.body
             ) for comment in comments),
-            issue_obj.get_processed_url(issue_obj.get_url())
+            issue_obj.get_url()
         )
-
-    def get_issue_for_record(self, record, extra=None):
-        if extra is None:
-            extra = {}
-        extra.setdefault('sprint_field_names', self.sprint_field_names)
-        return super().get_issue_for_record(record, extra=extra)
 
     def issues(self):
         cases = self.jira.search_issues(self.query, maxResults=None)
 
         for case in cases:
-            issue = self.get_issue_for_record(case.raw)
+            issue = self.get_issue_for_record(
+                case.raw,
+                extra={'sprint_field_names': self.sprint_field_names})
             extra = {
-                'jira_version': self.config.version,
                 'body': self.body(issue),
-                'extra_fields': self.config.extra_fields,
             }
             if self.config.version > 4:
                 extra.update({
                     'annotations': self.annotations(case, issue)
                 })
-            issue.update_extra(extra)
+            issue.extra.update(extra)
             yield issue

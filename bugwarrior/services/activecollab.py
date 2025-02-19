@@ -1,9 +1,9 @@
 import re
+import typing
 
 import pypandoc
 from pyac.library import activeCollab
-import typing_extensions
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 from bugwarrior import config
 
 import logging
@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 class ActiveCollabConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['activecollab']
+    service: typing.Literal['activecollab']
     url: config.StrippedTrailingSlashUrl
     key: str
     user_id: int
@@ -160,13 +160,13 @@ class ActiveCollabIssue(Issue):
                 if self.record.get('name')
                 else self.record.get('body')
             ),
-            url=self.get_processed_url(self.record['permalink']),
+            url=self.record['permalink'],
             number=self.record['id'],
             cls=self.record.get('type', 'subtask').lower(),
         )
 
 
-class ActiveCollabService(IssueService):
+class ActiveCollabService(Service):
     ISSUE_CLASS = ActiveCollabIssue
     CONFIG_SCHEMA = ActiveCollabConfig
 
@@ -193,10 +193,6 @@ class ActiveCollabService(IssueService):
                          body=comment['body']))
         return comments_formatted
 
-    def get_owner(self, issue):
-        if issue['assignee_id']:
-            return issue['assignee_id']
-
     def annotations(self, issue, issue_obj):
         if 'type' not in issue:
             # Subtask
@@ -210,7 +206,7 @@ class ActiveCollabService(IssueService):
                 c['user'],
                 pypandoc.convert_text(c['body'], 'md', format='html').rstrip()
             ) for c in comments),
-            issue_obj.get_processed_url(issue_obj.record['permalink']),
+            issue_obj.record['permalink'],
         )
 
     def issues(self):
@@ -247,5 +243,5 @@ class ActiveCollabService(IssueService):
             extra = {
                 'annotations': self.annotations(issue, issue_obj)
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj

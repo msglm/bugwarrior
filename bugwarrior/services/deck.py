@@ -1,18 +1,18 @@
 import datetime
 import logging
+import typing
 
 import requests
-import typing_extensions
 from dateutil.tz import tzutc
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 log = logging.getLogger(__name__)
 
 
 class NextcloudDeckConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['deck']
+    service: typing.Literal['deck']
     base_uri: config.StrippedTrailingSlashUrl
     username: str
 
@@ -31,7 +31,7 @@ class NextcloudDeckConfig(config.ServiceConfig):
 # * Stacks will be mapped to an UDA
 # * Cards will be mapped to tasks
 # * Labels will be mapped to tags
-class NextcloudDeckClient(ServiceClient):
+class NextcloudDeckClient(Client):
     def __init__(self, base_uri, username, password):
         self.api_base_path = f'{base_uri}/index.php/apps/deck/api/v1.0'
         self.ocs_base_path = f'{base_uri}/ocs/v2.php/apps/deck/api/v1.0'
@@ -120,6 +120,8 @@ class NextcloudDeckIssue(Issue):
 
     UNIQUE_KEY = (BOARD_ID, STACK_ID, CARD_ID,)
 
+    PRIORITY_MAP = {}  # FIXME
+
     def to_taskwarrior(self):
         return {
             'project': self.extra['board']['title'].lower().replace(' ', '_'),
@@ -150,7 +152,7 @@ class NextcloudDeckIssue(Issue):
         return self.build_default_description(title=self.record['title'])
 
 
-class NextcloudDeckService(IssueService):
+class NextcloudDeckService(Service):
     ISSUE_CLASS = NextcloudDeckIssue
     CONFIG_SCHEMA = NextcloudDeckConfig
 
@@ -165,6 +167,19 @@ class NextcloudDeckService(IssueService):
 
     def get_owner(self, issue):
         return issue[issue.ASSIGNEE]
+
+    def include(self, issue):
+        """ Return true if the issue in question should be included """
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
 
     def filter_boards(self, board):
         # include_board_ids takes precedence over exclude_board_ids

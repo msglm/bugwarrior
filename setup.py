@@ -52,7 +52,7 @@ setup(name='bugwarrior',
       author_email='ralph.bean@gmail.com',
       url='http://github.com/ralphbean/bugwarrior',
       license='GPLv3+',
-      packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
+      packages=find_packages(exclude=['ez_setup', 'examples', 'tests', 'tests.*']),
       include_package_data=True,
       zip_safe=False,
       install_requires=[
@@ -60,15 +60,13 @@ setup(name='bugwarrior',
           "dogpile.cache>=0.5.3",
           "jinja2>=2.7.2",
           "lockfile>=0.9.1",
-          "pydantic[email]<2",
+          "pydantic[email]>=2",
           "python-dateutil",
           "pytz",
           "requests",
           "taskw>=0.8",
           # Needed for backwards compatibility with python<=3.10.
           "tomli",
-          # Needed for backwards compatibility with python<=3.7.
-          "typing-extensions",
       ],
       extras_require={
           'all': list(
@@ -108,6 +106,7 @@ setup(name='bugwarrior',
       azuredevops=bugwarrior.services.azuredevops:AzureDevopsService
       gitbug=bugwarrior.services.gitbug:GitBugService
       deck=bugwarrior.services.deck:NextcloudDeckService
+      logseq=bugwarrior.services.logseq:LogseqService
       [ini2toml.processing]
       bugwarrior = bugwarrior.config.ini2toml_plugin:activate
       """,

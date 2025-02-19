@@ -1,24 +1,24 @@
-import re
 import operator
+import re
+import typing
 
 import requests
 from jinja2 import Template
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 import logging
 log = logging.getLogger(__name__)
 
 
 class PivotalTrackerConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['pivotaltracker']
+    service: typing.Literal['pivotaltracker']
     user_id: int
     account_ids: config.ConfigList
     token: str
 
-    version: typing_extensions.Literal['v5', 'edge'] = 'v5'
+    version: typing.Literal['v5', 'edge'] = 'v5'
     host: config.StrippedTrailingSlashUrl = config.StrippedTrailingSlashUrl(
         'https://www.pivotaltracker.com/services',
         scheme='https', host='pivotaltracker.com')
@@ -71,10 +71,6 @@ class PivotalTrackerIssue(Issue):
 
     UNIQUE_KEY = (URL,)
 
-    def get_owner(self, issue):
-        _, issue = issue
-        return issue.get('pivotalowners')
-
     def to_taskwarrior(self):
         description = self.record.get('description')
         created = self.parse_date(self.record.get('created_at'))
@@ -110,13 +106,13 @@ class PivotalTrackerIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record.get('name'),
-            url=self.get_processed_url(self.record.get('url')),
+            url=self.record.get('url'),
             number=int(self.record.get('id')),
             cls=self.record.get('story_type')
         )
 
 
-class PivotalTrackerService(IssueService, ServiceClient):
+class PivotalTrackerService(Service, Client):
     ISSUE_CLASS = PivotalTrackerIssue
     CONFIG_SCHEMA = PivotalTrackerConfig
 
@@ -147,10 +143,6 @@ class PivotalTrackerService(IssueService, ServiceClient):
                     labels=",".join(self.config.exclude_tags))
             if self.config.only_if_author:
                 self.query += f" requester:{self.config.user_id}"
-
-    def get_owner(self, issue):
-        # Issue filtering is implemented as part of the api query.
-        pass
 
     def annotations(self, annotations, story):
         final_annotations = []

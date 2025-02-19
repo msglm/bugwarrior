@@ -1,11 +1,10 @@
 import typing
 
-import pydantic
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 import logging
 
@@ -13,7 +12,7 @@ log = logging.getLogger(__name__)
 
 
 class YoutrackConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['youtrack']
+    service: typing.Literal['youtrack']
     host: config.NoSchemeUrl
     login: str
     token: str
@@ -31,7 +30,7 @@ class YoutrackConfig(config.ServiceConfig):
     # added during validation (computed field support will land in pydantic-2)
     base_url: str = ''
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def compute_base_url(cls, values):
         if values['use_https']:
             scheme = 'https'
@@ -77,6 +76,7 @@ class YoutrackIssue(Issue):
         },
     }
     UNIQUE_KEY = (URL,)
+    PRIORITY_MAP = {}  # FIXME
 
     def to_taskwarrior(self):
         return {
@@ -111,7 +111,7 @@ class YoutrackIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.get_issue_summary(),
-            url=self.get_processed_url(self.get_issue_url()),
+            url=self.get_issue_url(),
             number=self.get_issue(),
             cls='issue',
         )
@@ -125,7 +125,7 @@ class YoutrackIssue(Issue):
         )
 
 
-class YoutrackService(IssueService, ServiceClient):
+class YoutrackService(Service, Client):
     ISSUE_CLASS = YoutrackIssue
     CONFIG_SCHEMA = YoutrackConfig
 
@@ -146,11 +146,6 @@ class YoutrackService(IssueService, ServiceClient):
     @staticmethod
     def get_keyring_service(config):
         return f"youtrack://{config.login}@{config.host}"
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def issues(self):
         params = {

@@ -1,19 +1,20 @@
-import pydantic
-import typing_extensions
+import typing
+
+import pydantic.v1
 from v1pysdk import V1Meta
 from v1pysdk.none_deref import NoneDeref
 from urllib import parse
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 
 
 class VersionOneConfig(config.ServiceConfig):
     _DEPRECATE_PROJECT_NAME = True
     project_name: str = ''
 
-    service: typing_extensions.Literal['versionone']
-    base_uri: pydantic.AnyUrl
+    service: typing.Literal['versionone']
+    base_uri: pydantic.v1.AnyUrl
     username: str
 
     password: str = ''
@@ -163,7 +164,7 @@ class VersionOneIssue(Issue):
         )
 
 
-class VersionOneService(IssueService):
+class VersionOneService(Service):
     ISSUE_CLASS = VersionOneIssue
     CONFIG_SCHEMA = VersionOneConfig
 

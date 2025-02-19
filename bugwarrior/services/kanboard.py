@@ -1,20 +1,20 @@
 import datetime
 import logging
 import re
+import typing
 from urllib.parse import urlparse
 
 from dateutil.tz.tz import tzutc
 from kanboard import Client
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService
+from bugwarrior.services import Issue, Service
 
 log = logging.getLogger(__name__)
 
 
 class KanboardConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['kanboard']
+    service: typing.Literal['kanboard']
     url: config.StrippedTrailingSlashUrl
     username: str
     password: str
@@ -61,7 +61,7 @@ class KanboardIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.get_task_title(),
-            url=self.get_processed_url(self.get_url()),
+            url=self.get_url(),
             number=self.get_task_id(),
         )
 
@@ -110,7 +110,7 @@ class KanboardIssue(Issue):
             )
 
 
-class KanboardService(IssueService):
+class KanboardService(Service):
     ISSUE_CLASS = KanboardIssue
     CONFIG_SCHEMA = KanboardConfig
 
@@ -162,11 +162,6 @@ class KanboardService(IssueService):
             extra["annotations"] = self.annotations(task, extra["url"])
 
             yield self.get_issue_for_record(task, extra)
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     @staticmethod
     def get_keyring_service(config):

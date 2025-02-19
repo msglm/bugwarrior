@@ -1,6 +1,7 @@
 from .base import ServiceTest
 from .test_service import DumbIssue
 
+from bugwarrior.collect import TaskConstructor
 from bugwarrior.config.schema import ServiceConfig, MainSectionConfig
 
 
@@ -24,7 +25,7 @@ class TestTemplates(ServiceTest):
         )
         main_config = MainSectionConfig(interactive=False, targets=[])
 
-        issue = DumbIssue({}, config, main_config)
+        issue = DumbIssue({}, config, main_config, {})
         issue.to_taskwarrior = lambda: (
             self.arbitrary_issue if description is None else description
         )
@@ -37,7 +38,7 @@ class TestTemplates(ServiceTest):
     def test_default_taskwarrior_record(self):
         issue = self.get_issue({})
 
-        record = issue.get_taskwarrior_record()
+        record = TaskConstructor(issue).get_taskwarrior_record()
         expected_record = self.arbitrary_issue.copy()
         expected_record.update({
             'description': self.arbitrary_default_description,
@@ -53,7 +54,7 @@ class TestTemplates(ServiceTest):
             'description': description_template
         })
 
-        record = issue.get_taskwarrior_record()
+        record = TaskConstructor(issue).get_taskwarrior_record()
         expected_record = self.arbitrary_issue.copy()
         expected_record.update({
             'description': '%s - %s' % (
@@ -72,7 +73,7 @@ class TestTemplates(ServiceTest):
             'project': project_template
         })
 
-        record = issue.get_taskwarrior_record()
+        record = TaskConstructor(issue).get_taskwarrior_record()
         expected_record = self.arbitrary_issue.copy()
         expected_record.update({
             'description': self.arbitrary_default_description,
@@ -85,7 +86,7 @@ class TestTemplates(ServiceTest):
     def test_tag_templates(self):
         issue = self.get_issue(add_tags=['one', '{{ project }}'])
 
-        record = issue.get_taskwarrior_record()
+        record = TaskConstructor(issue).get_taskwarrior_record()
         expected_record = self.arbitrary_issue.copy()
         expected_record.update({
             'description': self.arbitrary_default_description,

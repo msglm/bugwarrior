@@ -4,6 +4,7 @@ from unittest import mock
 from dateutil.tz import datetime
 from dateutil.tz.tz import tzutc
 
+from bugwarrior.collect import TaskConstructor
 from bugwarrior.config import schema
 from bugwarrior.services.jira import JiraExtraFields, JiraService
 
@@ -56,7 +57,6 @@ class testJiraService(ConfigTest):
         conf = schema.validate_config(self.config, 'general', 'configpath')
         service = JiraService(
             conf['myjira'], conf['general'], _skip_server=True)
-        issue = mock.Mock()
         issue = mock.Mock()
         issue.record = dict(fields=dict(description=description))
         self.assertEqual(description, service.body(issue))
@@ -122,10 +122,9 @@ class TestJiraIssue(AbstractServiceTest, ServiceTest):
     def test_to_taskwarrior(self):
         arbitrary_url = 'http://one'
         arbitrary_extra = {
-            'jira_version': 5,
             'annotations': ['an annotation'],
             'body': 'issue body',
-            'extra_fields': self.get_extra_fields(),
+            'sprint_field_names': [],
         }
 
         issue = self.service.get_issue_for_record(
@@ -174,9 +173,8 @@ class TestJiraIssue(AbstractServiceTest, ServiceTest):
         ]
         arbitrary_url = 'http://one'
         arbitrary_extra = {
-            'jira_version': 5,
             'annotations': ['an annotation'],
-            'extra_fields': self.get_extra_fields()
+            'sprint_field_names': self.service.sprint_field_names,
         }
 
         issue = self.service.get_issue_for_record(
@@ -240,11 +238,12 @@ class TestJiraIssue(AbstractServiceTest, ServiceTest):
             'project': 'DONUT',
             'tags': []}
 
-        self.assertEqual(issue.get_taskwarrior_record(), expected)
+        self.assertEqual(TaskConstructor(issue).get_taskwarrior_record(), expected)
 
     def test_get_due(self):
         issue = self.service.get_issue_for_record(
-            self.arbitrary_record_with_due
+            self.arbitrary_record_with_due,
+            extra={'sprint_field_names': self.service.sprint_field_names},
         )
         self.assertEqual(issue.get_due(), datetime.datetime(
             2016, 9, 23, 16, 8, tzinfo=tzutc()))

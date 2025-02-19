@@ -1,16 +1,16 @@
+import typing
+
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.db import CACHE_REGION as cache
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client, CACHE_REGION as cache
 
 import logging
 log = logging.getLogger(__name__)
 
 
 class TaigaConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['taiga']
+    service: typing.Literal['taiga']
     base_uri: config.StrippedTrailingSlashUrl
     auth_token: str
 
@@ -57,13 +57,13 @@ class TaigaIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['subject'],
-            url=self.get_processed_url(self.extra['url']),
+            url=self.extra['url'],
             number=self.record['ref'],
             cls='issue',
         )
 
 
-class TaigaService(IssueService, ServiceClient):
+class TaigaService(Service, Client):
     ISSUE_CLASS = TaigaIssue
     CONFIG_SCHEMA = TaigaConfig
 
@@ -79,11 +79,6 @@ class TaigaService(IssueService, ServiceClient):
     @staticmethod
     def get_keyring_service(config):
         return f"taiga://{config.base_uri}"
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def _issues(self, userid, task_type, task_type_plural, task_type_short):
         log.debug('Getting %s' % task_type_plural)

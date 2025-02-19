@@ -2,21 +2,20 @@ import logging
 import typing
 
 import phabricator
-import pydantic
-import typing_extensions
+import pydantic.v1
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 
 log = logging.getLogger(__name__)
 
 
 class PhabricatorConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['phabricator']
+    service: typing.Literal['phabricator']
 
     user_phids: config.ConfigList = config.ConfigList([])
     project_phids: config.ConfigList = config.ConfigList([])
-    host: typing.Optional[pydantic.AnyUrl]
+    host: typing.Optional[pydantic.v1.AnyUrl]
     ignore_cc: typing.Optional[bool] = None
     ignore_author: typing.Optional[bool] = None
     ignore_owner: bool = False
@@ -76,7 +75,7 @@ class PhabricatorIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['title'],
-            url=self.get_processed_url(self.record['uri']),
+            url=self.record['uri'],
             number=self.record['uri'].split('/')[-1],
             cls=self.extra['type'],
         )
@@ -87,7 +86,7 @@ class PhabricatorIssue(Issue):
             or self.config.default_priority
 
 
-class PhabricatorService(IssueService):
+class PhabricatorService(Service):
     ISSUE_CLASS = PhabricatorIssue
     CONFIG_SCHEMA = PhabricatorConfig
 
@@ -242,10 +241,6 @@ class PhabricatorService(IssueService):
                 # 'annotations': self.annotations(phid, issue)
             }
             yield self.get_issue_for_record(diff, extra)
-
-    def get_owner(self, issue):
-        # Issue filtering is implemented as part of issue aggregation.
-        pass
 
     def issues(self):
         yield from self.tasks()

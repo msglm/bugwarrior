@@ -1,9 +1,10 @@
-import pydantic
+import typing
+
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService, ServiceClient
+from bugwarrior.services import Issue, Service, Client
 
 import logging
 log = logging.getLogger(__name__)
@@ -13,19 +14,19 @@ class TeamLabConfig(config.ServiceConfig):
     _DEPRECATE_PROJECT_NAME = True
     project_name: str = ''
 
-    service: typing_extensions.Literal['teamlab']
+    service: typing.Literal['teamlab']
     hostname: str
     login: str
     password: str
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def default_project_name(cls, values):
         if values['project_name'] == '':
             values['project_name'] = values['hostname']
         return values
 
 
-class TeamLabClient(ServiceClient):
+class TeamLabClient(Client):
     def __init__(self, hostname, verbose=False):
         self.hostname = hostname
         self.verbose = verbose
@@ -96,7 +97,7 @@ class TeamLabIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['title'],
-            url=self.get_processed_url(self.get_issue_url()),
+            url=self.get_issue_url(),
             number=self.record['id'],
             cls='issue',
         )
@@ -117,7 +118,7 @@ class TeamLabIssue(Issue):
         return self.config.default_priority
 
 
-class TeamLabService(IssueService):
+class TeamLabService(Service):
     ISSUE_CLASS = TeamLabIssue
     CONFIG_SCHEMA = TeamLabConfig
 

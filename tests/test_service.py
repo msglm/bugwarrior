@@ -1,6 +1,7 @@
+import re
+import typing
 import unittest.mock
 
-import typing_extensions
 
 from bugwarrior import config, services
 from bugwarrior.config import schema
@@ -14,7 +15,7 @@ that long.""".replace('\n', ' ')
 
 
 class DumbConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['test']
+    service: typing.Literal['test']
 
     import_labels_as_tags: bool = False
     label_template: str = '{{label}}'
@@ -32,7 +33,7 @@ class DumbIssue(services.Issue):
         raise NotImplementedError
 
 
-class DumbIssueService(services.IssueService):
+class DumbService(services.Service):
     """
     Implement the required methods but they shouldn't be called.
     """
@@ -60,16 +61,38 @@ class ServiceBase(ConfigTest):
 
     def makeService(self):
         with unittest.mock.patch('bugwarrior.config.schema.get_service',
-                                 lambda x: DumbIssueService):
+                                 lambda x: DumbService):
             conf = schema.validate_config(self.config, 'general', 'configpath')
-        return DumbIssueService(conf['test'], conf['general'])
+        return DumbService(conf['test'], conf['general'])
 
     def makeIssue(self):
         service = self.makeService()
         return service.get_issue_for_record({})
 
+    def checkArchitecture(self, klass):
+        """
+        Bidirectional communication between the base classes and their children
+        has been a source of complication as changes to any part of the
+        circular data flow can create unpredictable side-effects. The concrete
+        methods of the base classes exist as utilities for children to call;
+        they should not call the abstract methods which children implement.
 
-class TestIssueService(ServiceBase):
+        Here, we cheaply check that the names of the abstract methods only
+        appear once. This should ensure that these methods are declared here
+        but not called.
+        """
+        with open(services.__file__, 'r') as f:
+            base = f.read()
+
+        for method in klass.__abstractmethods__:
+            references = re.findall(rf'{method}\(', base)
+            self.assertEqual(len(references), 1, references)
+
+
+class TestService(ServiceBase):
+
+    def test_architecture(self):
+        self.checkArchitecture(services.Service)
 
     def test_build_annotations_default(self):
         service = self.makeService()
@@ -100,6 +123,9 @@ class TestIssueService(ServiceBase):
 
 
 class TestIssue(ServiceBase):
+
+    def test_architecture(self):
+        self.checkArchitecture(services.Issue)
 
     def test_build_default_description_default(self):
         issue = self.makeIssue()

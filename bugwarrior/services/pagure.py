@@ -1,12 +1,12 @@
 import datetime
 import pytz
+import typing
 
-import pydantic
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 
 import logging
 log = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 class PagureConfig(config.ServiceConfig):
     # strictly required
-    service: typing_extensions.Literal['pagure']
+    service: typing.Literal['pagure']
     base_url: config.StrippedTrailingSlashUrl
 
     # conditionally required
@@ -27,7 +27,7 @@ class PagureConfig(config.ServiceConfig):
     import_tags: bool = False
     tag_template: str = '{{label}}'
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def require_tag_or_repo(cls, values):
         if not values['tag'] and not values['repo']:
             raise ValueError(
@@ -100,13 +100,13 @@ class PagureIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['title'],
-            url=self.get_processed_url(self.record['html_url']),
+            url=self.record['html_url'],
             number=self.record['id'],
             cls=self.extra['type'],
         )
 
 
-class PagureService(IssueService):
+class PagureService(Service):
     ISSUE_CLASS = PagureIssue
     CONFIG_SCHEMA = PagureConfig
 
@@ -140,19 +140,32 @@ class PagureService(IssueService):
 
         return issues
 
-    def annotations(self, issue, issue_obj):
+    def annotations(self, issue):
         url = issue['html_url']
         return self.build_annotations(
             ((
                 c['user']['name'],
                 c['comment'],
             ) for c in issue['comments']),
-            issue_obj.get_processed_url(url)
+            url
         )
 
     def get_owner(self, issue):
         if issue[1]['assignee']:
             return issue[1]['assignee']['name']
+
+    def include(self, issue):
+        """ Return true if the issue in question should be included """
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
 
     def filter_repos(self, repo):
         if repo in self.config.exclude_repos:
@@ -198,7 +211,7 @@ class PagureService(IssueService):
             extra = {
                 'project': repo,
                 'type': 'pull_request' if 'branch' in issue else 'issue',
-                'annotations': self.annotations(issue, issue_obj)
+                'annotations': self.annotations(issue)
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj

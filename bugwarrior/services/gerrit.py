@@ -2,14 +2,13 @@ import json
 import typing
 
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 
 class GerritConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['gerrit']
+    service: typing.Literal['gerrit']
     base_uri: config.StrippedTrailingSlashUrl
     username: str
     password: str
@@ -78,13 +77,13 @@ class GerritIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['subject'],
-            url=self.get_processed_url(self.extra['url']),
+            url=self.extra['url'],
             number=self.record['_number'],
             cls='pull_request',
         )
 
 
-class GerritService(IssueService, ServiceClient):
+class GerritService(Service, Client):
     ISSUE_CLASS = GerritIssue
     CONFIG_SCHEMA = GerritConfig
 
@@ -115,11 +114,6 @@ class GerritService(IssueService, ServiceClient):
     @staticmethod
     def get_keyring_service(config):
         return f"gerrit://{config.base_uri}"
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def issues(self):
         # Construct the whole url by hand here, because otherwise requests will

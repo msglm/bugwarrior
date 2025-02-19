@@ -1,10 +1,10 @@
 import itertools
 import time
+import typing
 
 import requests
-import typing_extensions
 
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 from bugwarrior import config
 
 import logging
@@ -31,14 +31,14 @@ class ActiveCollabProjects(dict):
 
 
 class ActiveCollab2Config(config.ServiceConfig):
-    service: typing_extensions.Literal['activecollab2']
+    service: typing.Literal['activecollab2']
     url: config.StrippedTrailingSlashUrl
     key: str
     user_id: int
     projects: ActiveCollabProjects
 
 
-class ActiveCollab2Client(ServiceClient):
+class ActiveCollab2Client(Client):
     def __init__(self, url, key, user_id, projects, target):
         self.url = url
         self.key = key
@@ -185,13 +185,13 @@ class ActiveCollab2Issue(Issue):
                 if self.record['name']
                 else self.record['body']
             ),
-            url=self.get_processed_url(self.record['permalink']),
+            url=self.record['permalink'],
             number=self.record['ticket_id'],
             cls=record_type,
         )
 
 
-class ActiveCollab2Service(IssueService):
+class ActiveCollab2Service(Service):
     ISSUE_CLASS = ActiveCollab2Issue
     CONFIG_SCHEMA = ActiveCollab2Config
 
@@ -203,11 +203,6 @@ class ActiveCollab2Service(IssueService):
                                           self.config.user_id,
                                           self.config.projects,
                                           self.config.target)
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def issues(self):
         # Loop through each project

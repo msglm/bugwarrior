@@ -1,13 +1,13 @@
 import re
 import sys
+import typing
 import urllib.parse
 
-import pydantic
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 import logging
 log = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class GithubConfig(config.ServiceConfig):
     password: str = 'Deprecated'
 
     # strictly required
-    service: typing_extensions.Literal['github']
+    service: typing.Literal['github']
     login: str
     token: str
 
@@ -41,7 +41,7 @@ class GithubConfig(config.ServiceConfig):
     project_owner_prefix: bool = False
     issue_urls: config.ConfigList = config.ConfigList([])
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def deprecate_password(cls, values):
         if values['password'] != 'Deprecated':
             log.warning(
@@ -49,14 +49,14 @@ class GithubConfig(config.ServiceConfig):
                 '"password" in favor of "token".')
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def require_username_or_query(cls, values):
         if not values['username'] and not values['query']:
             raise ValueError(
                 'section requires one of:\n    username\n    query')
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def issue_urls_consistent_with_host(cls, values):
         issue_url_paths = []
         for url in values['issue_urls']:
@@ -71,7 +71,7 @@ class GithubConfig(config.ServiceConfig):
         values['issue_urls'] = issue_url_paths
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def require_username_if_include_user_repos(cls, values):
         if values['include_user_repos'] and not values['username']:
             raise ValueError(
@@ -79,7 +79,7 @@ class GithubConfig(config.ServiceConfig):
         return values
 
 
-class GithubClient(ServiceClient):
+class GithubClient(Client):
     def __init__(self, host, auth):
         self.host = host
         self.auth = auth
@@ -309,13 +309,13 @@ class GithubIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['title'],
-            url=self.get_processed_url(self.record['html_url']),
+            url=self.record['html_url'],
             number=self.record['number'],
             cls=self.extra['type'],
         )
 
 
-class GithubService(IssueService):
+class GithubService(Service):
     ISSUE_CLASS = GithubIssue
     CONFIG_SCHEMA = GithubConfig
 
@@ -383,7 +383,7 @@ class GithubService(IssueService):
         user, repo = tag.split('/')
         return self.client.get_comments(user, repo, number)
 
-    def annotations(self, tag, issue, issue_obj):
+    def annotations(self, tag, issue):
         url = issue['html_url']
         annotations = []
         if self.main_config.annotation_comments:
@@ -393,10 +393,7 @@ class GithubService(IssueService):
                 c['user']['login'],
                 c['body'],
             ) for c in comments)
-        return self.build_annotations(
-            annotations,
-            issue_obj.get_processed_url(url)
-        )
+        return self.build_annotations(annotations, url)
 
     def body(self, issue):
         body = issue['body']
@@ -442,12 +439,23 @@ class GithubService(IssueService):
         return True
 
     def include(self, issue):
+        """ Return true if the issue in question should be included """
         if 'pull_request' in issue[1]:
             if self.config.exclude_pull_requests:
                 return False
             if not self.config.filter_pull_requests:
                 return True
-        return super().include(issue)
+
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
 
     def issues(self):
         issues = {}
@@ -497,9 +505,9 @@ class GithubService(IssueService):
             extra = {
                 'project': projectName,
                 'type': 'pull_request' if 'pull_request' in issue else 'issue',
-                'annotations': self.annotations(tag, issue, issue_obj),
+                'annotations': self.annotations(tag, issue),
                 'body': self.body(issue),
                 'namespace': self.config.username,
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj

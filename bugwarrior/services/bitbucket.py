@@ -1,21 +1,20 @@
 import logging
 import typing
 
-import pydantic
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 log = logging.getLogger(__name__)
 
 
 class BitbucketConfig(config.ServiceConfig):
     _DEPRECATE_FILTER_MERGE_REQUESTS = True
-    filter_merge_requests: typing.Union[bool, typing_extensions.Literal['Undefined']] = 'Undefined'
+    filter_merge_requests: typing.Union[bool, typing.Literal['Undefined']] = 'Undefined'
 
-    service: typing_extensions.Literal['bitbucket']
+    service: typing.Literal['bitbucket']
 
     username: str
 
@@ -27,10 +26,10 @@ class BitbucketConfig(config.ServiceConfig):
 
     include_repos: config.ConfigList = config.ConfigList([])
     exclude_repos: config.ConfigList = config.ConfigList([])
-    include_merge_requests: typing.Union[bool, typing_extensions.Literal['Undefined']] = 'Undefined'
+    include_merge_requests: typing.Union[bool, typing.Literal['Undefined']] = 'Undefined'
     project_owner_prefix: bool = False
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def deprecate_password_authentication(cls, values):
         if values['login'] != 'Undefined' or values['password'] != 'Undefined':
             log.warning(
@@ -83,13 +82,13 @@ class BitbucketIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['title'],
-            url=self.get_processed_url(self.extra['url']),
+            url=self.extra['url'],
             number=self.record['id'],
             cls='issue'
         )
 
 
-class BitbucketService(IssueService, ServiceClient):
+class BitbucketService(Service, Client):
     ISSUE_CLASS = BitbucketIssue
     CONFIG_SCHEMA = BitbucketConfig
 
@@ -170,7 +169,7 @@ class BitbucketService(IssueService, ServiceClient):
                 comment['user']['username'],
                 comment['content']['raw'],
             ) for comment in response),
-            issue_obj.get_processed_url(url)
+            url
         )
 
     def get_owner(self, issue):
@@ -178,6 +177,19 @@ class BitbucketService(IssueService, ServiceClient):
         assignee = issue.get('assignee', None)
         if assignee is not None:
             return assignee.get('username', None)
+
+    def include(self, issue):
+        """ Return true if the issue in question should be included """
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
 
     def issues(self):
         user = self.config.username
@@ -210,7 +222,7 @@ class BitbucketService(IssueService, ServiceClient):
                 'url': url,
                 'annotations': self.get_annotations(tag, issue, issue_obj, url)
             }
-            issue_obj.update_extra(extras)
+            issue_obj.extra.update(extras)
             yield issue_obj
 
         if self.config.include_merge_requests:
@@ -239,5 +251,5 @@ class BitbucketService(IssueService, ServiceClient):
                     'annotations': self.get_annotations(
                         tag, issue, issue_obj, url)
                 }
-                issue_obj.update_extra(extras)
+                issue_obj.extra.update(extras)
                 yield issue_obj

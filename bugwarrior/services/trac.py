@@ -1,20 +1,20 @@
 import csv
 import io as StringIO
+import typing
 import urllib.parse
 
 import offtrac
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService
+from bugwarrior.services import Issue, Service
 
 import logging
 log = logging.getLogger(__name__)
 
 
 class TracConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['trac']
+    service: typing.Literal['trac']
     base_uri: config.NoSchemeUrl
 
     scheme: str = 'https'
@@ -78,7 +78,7 @@ class TracIssue(Issue):
 
         return self.build_default_description(
             title=self.record['summary'],
-            url=self.get_processed_url(self.record['url']),
+            url=self.record['url'],
             number=number,
             cls='issue'
         )
@@ -90,7 +90,7 @@ class TracIssue(Issue):
         )
 
 
-class TracService(IssueService):
+class TracService(Service):
     ISSUE_CLASS = TracIssue
     CONFIG_SCHEMA = TracConfig
 
@@ -115,22 +115,34 @@ class TracService(IssueService):
     def get_keyring_service(config):
         return f"https://{config.username}@{config.base_uri}/"
 
-    def annotations(self, tag, issue, issue_obj):
+    def annotations(self, issue):
         annotations = []
         # without offtrac, we can't get issue comments
         if self.trac is None:
             return annotations
         changelog = self.trac.server.ticket.changeLog(issue['number'])
-        for time, author, field, oldvalue, newvalue, permament in changelog:
+        for time, author, field, oldvalue, newvalue, permanent in changelog:
             if field == 'comment':
                 annotations.append((author, newvalue, ))
 
-        url = issue_obj.get_processed_url(issue['url'])
-        return self.build_annotations(annotations, url)
+        return self.build_annotations(annotations, issue['url'])
 
     def get_owner(self, issue):
         tag, issue = issue
         return issue.get('owner', None) or None
+
+    def include(self, issue):
+        """ Return true if the issue in question should be included """
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
 
     def issues(self):
         base_url = "https://" + self.config.base_uri
@@ -168,8 +180,8 @@ class TracService(IssueService):
         for project, issue in issues:
             issue_obj = self.get_issue_for_record(issue)
             extra = {
-                'annotations': self.annotations(project, issue, issue_obj),
+                'annotations': self.annotations(issue),
                 'project': project,
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj

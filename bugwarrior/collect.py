@@ -1,8 +1,12 @@
+import copy
 import logging
 import multiprocessing
 import time
 
-from pkg_resources import iter_entry_points
+from importlib_metadata import entry_points
+from jinja2 import Template
+
+from taskw.task import Task
 
 log = logging.getLogger(__name__)
 
@@ -11,14 +15,13 @@ SERVICE_FINISHED_OK = 0
 SERVICE_FINISHED_ERROR = 1
 
 
-def get_service(service_name):
-    epoint = iter_entry_points(group='bugwarrior.service', name=service_name)
+def get_service(service_name: str):
     try:
-        epoint = next(epoint)
-    except StopIteration:
-        return None
-
-    return epoint.load()
+        (service,) = entry_points(group='bugwarrior.service', name=service_name)
+    except ValueError as e:
+        raise ValueError(f"Configured service '{service_name}' not found. "
+                         "Is it installed? Or misspelled?") from e
+    return service.load()
 
 
 def _aggregate_issues(conf, main_section, target, queue):
@@ -88,7 +91,7 @@ def aggregate_issues(conf, main_section, debug):
     while currently_running > 0:
         issue = queue.get(True)
         try:
-            yield issue.get_taskwarrior_record()
+            yield TaskConstructor(issue).get_taskwarrior_record()
         except AttributeError:
             if isinstance(issue, tuple):
                 currently_running -= 1
@@ -100,3 +103,50 @@ def aggregate_issues(conf, main_section, debug):
             yield issue
 
     log.info("Done aggregating remote issues.")
+
+
+class TaskConstructor:
+    """ Construct a taskwarrior task from a foreign record. """
+
+    def __init__(self, issue):
+        self.issue = issue
+
+    def get_added_tags(self):
+        added_tags = []
+        for tag in self.issue.config.add_tags:
+            tag = Template(tag).render(self.get_template_context())
+            if tag:
+                added_tags.append(tag)
+
+        return added_tags
+
+    def get_taskwarrior_record(self, refined=True) -> dict:
+        if not getattr(self, '_taskwarrior_record', None):
+            self._taskwarrior_record = self.issue.to_taskwarrior()
+        record = copy.deepcopy(self._taskwarrior_record)
+        if refined:
+            record = self.refine_record(record)
+        if 'tags' not in record:
+            record['tags'] = []
+        if refined:
+            record['tags'].extend(self.get_added_tags())
+        return record
+
+    def get_template_context(self):
+        context = (
+            self.get_taskwarrior_record(refined=False).copy()
+        )
+        context.update(self.issue.extra)
+        context.update({
+            'description': self.issue.get_default_description(),
+        })
+        return context
+
+    def refine_record(self, record):
+        for field in Task.FIELDS.keys():
+            if field in self.issue.config.templates:
+                template = Template(self.issue.config.templates[field])
+                record[field] = template.render(self.get_template_context())
+            elif field == 'description':
+                record['description'] = self.issue.get_default_description()
+        return record

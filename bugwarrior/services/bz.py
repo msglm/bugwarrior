@@ -6,17 +6,16 @@ import typing
 import xmlrpc.client
 
 import bugzilla
-import pydantic
+import pydantic.v1
 import pytz
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue
+from bugwarrior.services import Service, Issue
 
 log = logging.getLogger(__name__)
 
 
-class OptionalSchemeUrl(pydantic.AnyUrl):
+class OptionalSchemeUrl(pydantic.v1.AnyUrl):
     """
     A temporary type to use during the deprecation period of scheme-less urls.
     """
@@ -34,7 +33,7 @@ class OptionalSchemeUrl(pydantic.AnyUrl):
 
 
 class BugzillaConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['bugzilla']
+    service: typing.Literal['bugzilla']
     username: str
     base_uri: OptionalSchemeUrl
 
@@ -54,7 +53,7 @@ class BugzillaConfig(config.ServiceConfig):
         'PASSES_QA',
     ])
     include_needinfos: bool = False
-    query_url: typing.Optional[pydantic.AnyUrl]
+    query_url: typing.Optional[pydantic.v1.AnyUrl]
     force_rest: bool = False
     advanced: bool = False
 
@@ -137,13 +136,13 @@ class BugzillaIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['summary'],
-            url=self.get_processed_url(self.extra['url']),
+            url=self.extra['url'],
             number=self.record['id'],
             cls='issue',
         )
 
 
-class BugzillaService(IssueService):
+class BugzillaService(Service):
     ISSUE_CLASS = BugzillaIssue
     CONFIG_SCHEMA = BugzillaConfig
 
@@ -189,10 +188,23 @@ class BugzillaService(IssueService):
     def get_owner(self, issue):
         return issue['assigned_to']
 
-    def annotations(self, tag, issue, issue_obj):
+    def include(self, issue):
+        """ Return true if the issue in question should be included """
+        if self.config.only_if_assigned:
+            owner = self.get_owner(issue)
+            include_owners = [self.config.only_if_assigned]
+
+            if self.config.also_unassigned:
+                include_owners.append(None)
+
+            return owner in include_owners
+
+        return True
+
+    def annotations(self, tag, issue):
         base_url = "%s/show_bug.cgi?id=" % self.config.base_uri
         long_url = base_url + str(issue['id'])
-        url = issue_obj.get_processed_url(long_url)
+        url = long_url
 
         if 'comments' in issue:
             comments = issue.get('comments', [])
@@ -284,7 +296,7 @@ class BugzillaService(IssueService):
             issue_obj = self.get_issue_for_record(issue)
             extra = {
                 'url': base_url + str(issue['id']),
-                'annotations': self.annotations(tag, issue, issue_obj),
+                'annotations': self.annotations(tag, issue),
             }
 
             username = self.config.username
@@ -302,7 +314,7 @@ class BugzillaService(IssueService):
             else:
                 extra['assigned_on'] = None
 
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj
 
     def _get_assigned_date(self, issue):

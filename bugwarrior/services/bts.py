@@ -1,11 +1,11 @@
 import sys
+import typing
 
-import pydantic
+import pydantic.v1
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService, ServiceClient
+from bugwarrior.services import Issue, Service, Client
 
 import logging
 log = logging.getLogger(__name__)
@@ -22,9 +22,9 @@ UDD_BUGS_SEARCH = "https://udd.debian.org/bugs/"
 
 
 class BTSConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['bts']
+    service: typing.Literal['bts']
 
-    email: pydantic.EmailStr = pydantic.EmailStr('')
+    email: pydantic.v1.EmailStr = pydantic.v1.EmailStr('')
     packages: config.ConfigList = config.ConfigList([])
 
     udd: bool = False
@@ -33,20 +33,20 @@ class BTSConfig(config.ServiceConfig):
     ignore_pkg: config.ConfigList = config.ConfigList([])
     ignore_src: config.ConfigList = config.ConfigList([])
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def require_email_or_packages(cls, values):
         if not values['email'] and not values['packages']:
             raise ValueError(
                 'section requires one of:\n    email\n    packages')
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def udd_needs_email(cls, values):
         if values['udd'] and not values['email']:
             raise ValueError("no 'email' but UDD search was requested")
         return values
 
-    @pydantic.root_validator
+    @pydantic.v1.root_validator
     def python_version_limited(cls, values):
         log.warning(
             'The Debian BTS service has a dependency that has not yet been '
@@ -126,7 +126,7 @@ class BTSIssue(Issue):
 
         return self.build_default_description(
             title=self.record['subject'],
-            url=self.get_processed_url(self.record['url']),
+            url=self.record['url'],
             number=self.record['number'],
             cls='issue'
         )
@@ -138,14 +138,9 @@ class BTSIssue(Issue):
         )
 
 
-class BTSService(IssueService, ServiceClient):
+class BTSService(Service, Client):
     ISSUE_CLASS = BTSIssue
     CONFIG_SCHEMA = BTSConfig
-
-    def get_owner(self, issue):
-        # TODO
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def _record_for_bug(self, bug):
         return {'number': bug.bug_num,
@@ -169,10 +164,10 @@ class BTSService(IssueService, ServiceClient):
         resp = requests.get(UDD_BUGS_SEARCH, request_params)
         return self.json_response(resp)
 
-    def annotations(self, issue, issue_obj):
+    def annotations(self, issue):
         return self.build_annotations(
             [],
-            issue_obj.get_processed_url(issue['url'])
+            issue['url']
         )
 
     def issues(self):
@@ -226,7 +221,7 @@ class BTSService(IssueService, ServiceClient):
         for issue in issues:
             issue_obj = self.get_issue_for_record(issue)
             extra = {
-                'annotations': self.annotations(issue, issue_obj)
+                'annotations': self.annotations(issue)
             }
-            issue_obj.update_extra(extra)
+            issue_obj.extra.update(extra)
             yield issue_obj

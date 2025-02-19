@@ -117,8 +117,10 @@ def pull(dry_run, flavor, interactive, debug, quiet):
                 lockfile_path
             )
         )
+        sys.exit(1)
     except RuntimeError as e:
         log.exception("Aborted (%s)" % e)
+        sys.exit(1)
 
 
 @cli.group()

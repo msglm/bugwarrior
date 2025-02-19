@@ -3,18 +3,18 @@ import os
 import signal
 import subprocess
 import sys
+import typing
 
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 log = logging.getLogger(__name__)
 
 
 class GitBugConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['gitbug']
+    service: typing.Literal['gitbug']
 
     path: config.ExpandedPath
 
@@ -65,7 +65,7 @@ class Webui:
         return False
 
 
-class GitBugClient(ServiceClient):
+class GitBugClient(Client):
     def __init__(self, path, port, annotation_comments):
         self.path = path
         self.port = port
@@ -145,7 +145,7 @@ class GitBugIssue(Issue):
             title=self.record['title'], cls='bug')
 
 
-class GitBugService(IssueService):
+class GitBugService(Service):
     ISSUE_CLASS = GitBugIssue
     CONFIG_SCHEMA = GitBugConfig
 
@@ -156,12 +156,6 @@ class GitBugService(IssueService):
             path=self.config.path,
             port=self.config.port,
             annotation_comments=self.main_config.annotation_comments)
-
-    def get_owner(self, issue):
-        # Issue assignment hasn't been implemented in upstream git-bug yet.
-        # See https://github.com/MichaelMure/git-bug/issues/112.
-        raise NotImplementedError(
-            "This service has not implemented support for 'only_if_assigned'.")
 
     def issues(self):
         for issue in self.client.get_issues():

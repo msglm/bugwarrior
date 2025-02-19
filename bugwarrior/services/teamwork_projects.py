@@ -1,20 +1,21 @@
+import typing
+
 import requests
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import IssueService, Issue, ServiceClient
+from bugwarrior.services import Service, Issue, Client
 
 import logging
 log = logging.getLogger(__name__)
 
 
 class TeamworkConfig(config.ServiceConfig):
-    service: typing_extensions.Literal['teamwork_projects']
+    service: typing.Literal['teamwork_projects']
     host: config.StrippedTrailingSlashUrl
     token: str
 
 
-class TeamworkClient(ServiceClient):
+class TeamworkClient(Client):
 
     def __init__(self, host, token):
         self.host = host
@@ -118,7 +119,7 @@ class TeamworkIssue(Issue):
         }
 
 
-class TeamworkService(IssueService):
+class TeamworkService(Service):
     ISSUE_CLASS = TeamworkIssue
     CONFIG_SCHEMA = TeamworkConfig
 
@@ -145,9 +146,6 @@ class TeamworkService(IssueService):
                 return self.build_annotations(comment_list, None)
         return []
 
-    def get_owner(self, issue):
-        return issue.get_owner()
-
     def issues(self):
         response = self.client.call_api("GET", "/tasks.json")
         for issue in response["todo-items"]:
@@ -159,5 +157,5 @@ class TeamworkService(IssueService):
                     "host": self.config.host,
                     'annotations': self.get_comments(issue),
                 }
-                issue_obj.update_extra(extra)
+                issue_obj.extra.update(extra)
                 yield issue_obj

@@ -1,11 +1,11 @@
 import requests
 import re
+import typing
 
 from taskw import TaskWarriorShellout
-import typing_extensions
 
 from bugwarrior import config
-from bugwarrior.services import Issue, IssueService, ServiceClient
+from bugwarrior.services import Issue, Service, Client
 
 import logging
 log = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class RedMineConfig(config.ServiceConfig):
     _DEPRECATE_PROJECT_NAME = True
     project_name: str = ''
 
-    service: typing_extensions.Literal['redmine']
+    service: typing.Literal['redmine']
     url: config.StrippedTrailingSlashUrl
     key: str
 
@@ -26,7 +26,7 @@ class RedMineConfig(config.ServiceConfig):
     verify_ssl: bool = True
 
 
-class RedMineClient(ServiceClient):
+class RedMineClient(Client):
     def __init__(self, url, key, auth, issue_limit, verify_ssl):
         self.url = url
         self.key = key
@@ -236,13 +236,13 @@ class RedMineIssue(Issue):
     def get_default_description(self):
         return self.build_default_description(
             title=self.record['subject'],
-            url=self.get_processed_url(self.get_issue_url()),
+            url=self.get_issue_url(),
             number=self.record['id'],
             cls='issue',
         )
 
 
-class RedMineService(IssueService):
+class RedMineService(Service):
     ISSUE_CLASS = RedMineIssue
     CONFIG_SCHEMA = RedMineConfig
 
@@ -264,10 +264,6 @@ class RedMineService(IssueService):
     @staticmethod
     def get_keyring_service(config):
         return f"redmine://{config.login}@{config.url}/"
-
-    def get_owner(self, issue):
-        # Issue filtering is implemented as part of the api query.
-        pass
 
     def issues(self):
         issues = self.client.find_issues(
